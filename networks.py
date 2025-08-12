@@ -2,7 +2,6 @@
 # 2.求损失
 # 3.反向传播,目的----求的参数的梯度
 # 4.参数优化,更新参数
-
 import os
 import torch as T
 import torch.nn as nn
@@ -11,7 +10,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 # 什么是激活函数？
 #     --激活函数就是将本来线性的替代加入非线性的转换,能够是拟合更加确切
-
+# wait
 # 有标签的数据叫做有监督模型，否则叫做无监督模型
 # 这里的损失函数是怎么求的？参照的那个Y是什么？
 # 因为只在训练阶段起作用,然而又是用的共同的环境,所以输入就是,状态空间+所有无人机可能的动作
@@ -26,7 +25,8 @@ class CriticNetwork(nn.Module):
     def __init__(self, beta, input_dims, fc1_dims, fc2_dims, 
                     n_agents, n_actions, name, chkpt_dir):
         super(CriticNetwork, self).__init__()
-
+        # 在critic网络中input_dims通常接收所有智能体的状态 + 所有智能体的动作作为输入
+        # 在 Actor 里的 input_dims对应 该智能体的观测空间维度
         self.chkpt_file = os.path.join(chkpt_dir, name)
         self.fc1 = nn.Linear(input_dims+n_agents*n_actions, fc1_dims)
         self.fc2 = nn.Linear(fc1_dims, fc2_dims)
@@ -73,7 +73,7 @@ class ActorNetwork(nn.Module):#这不就是pai的函数形式吗，所以输出�
         # 输出的是每一个动作的概率?
         # 定义一个优化器,其实就是求梯度,就比如随机梯度下降,这里的Adam是一个优化器类型,相较于普通的SGD更快更稳定(就是wt=wt+....的功能，只不过实现的方法不一样)
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
-        # 更新学习率,学习率是不断更新的,不是一成不变的,这段代码就表示每5000步将学习率改变为原来的1/3
+        # 更新学习率,学习率是不断更新的
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.8)
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
  

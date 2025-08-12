@@ -40,7 +40,7 @@ class Agent:
         # 如果调用者没有传入 evaluate 参数，就默认使用 False；
         # 如果调用者明确传入了 evaluate=True，那么这个函数执行时 evaluate 的值就是 True。
         state = T.tensor([observation], dtype=T.float).to(self.actor.device)#感觉是一个二维的（最起码）---使用阶段是一维的，训练阶段是二维的，训练是全局环境
-        # 前向传播就是利用现有的网络参数和神经网路框架算出action的值？action应该不是state value吧？应该是损失或者是整体的回报？
+        # 前向传播就是利用现有的网络参数和神经网路框架算出action的值？
         # 其实就是Π（a|s,参数），直接输出的就是当前参数下，对应环境下的最优动作，这个动作网络就是这个策略Π的函数形式，只不过在Maddpg优化的时候是用到目标函数的，那个也会用到这个策略Π，而且也会优化参数，
         # 类似的critic网络也是代表q(a|s,参数)，直接输出的就是当前参数下，对应环境下的action value，也是在优化的时候，才涉及目标函数，本质上都是将他们用函数表示，
         # 当然在优化的时候，肯定还会用到，但是并代表输出的结果就是优化的目标
@@ -53,7 +53,7 @@ class Agent:
 
         noise_scale = max(min_noise, max_noise * (decay_rate ** time_step))
         #self.n_actions表示维度,是个向量的形式
-        noise = 2 * T.rand(self.n_actions).to(self.actor.device) - 1 # [-1,1)
+        noise = 2 * T.rand(self.n_actions).to(self.actor.device) - 1 # [-1,1)#这是是基础噪声向量（类似于单位向量） ---后续是*噪声强度是真实的噪声
         # 训练阶段添加探索
         if not evaluate:
             noise = noise_scale * noise
@@ -68,6 +68,7 @@ class Agent:
         magnitude = np.linalg.norm(action_np)
         if magnitude > 0.04:
             action_np = action_np / magnitude * 0.04
+        #     返回的是每一个动作的概率，不是给出确定的动作
         return action_np
 
     # 更新网络的参数(目标网络)
@@ -77,10 +78,10 @@ class Agent:
 
         # named_parameters()是PyTorchnn.Module提供的函数，可以返回模型中所有需要训练的参数及其名称，即使你没有在自己写的类中定义它，只要继承了
         # nn.Module就能直接使用。它只返回参与梯度计算（也就是可训练的）参数，不会包含那些 requires_grad=False 的参数。
-
+        # 网络在进行初始化的时候，会默认初始化参数，这些参数是保存在内存中，不用每一次都保存在文件当中
         target_actor_params = self.target_actor.named_parameters()
         actor_params = self.actor.named_parameters()
-
+        # 模型参数列表 转成 字典，这样后面可以用 名字（字符串）直接访问对应的参数张量。---转换的主要原因是方便后续的操作---但是操作的是副本
         target_actor_state_dict = dict(target_actor_params)
         actor_state_dict = dict(actor_params)
 
@@ -94,7 +95,7 @@ class Agent:
                     (1-tau)*target_actor_state_dict[name].clone()
 
         # target_actor_params 是真实引用，修改它会立即改变模型参数；
-        # target_actor_state_dict 是参数的副本，修改它不会影响模型，除非手动 load_state_dict()。
+        # target_actor_state_dict 是参数的副本，修改它不会影响模型，除非手动 load_state_dict()。-*----改变的是内存中的变量值
         # named_parameters 直通车，改了就动模型他；
         # state_dict 是快照，改了还得再装下。
 

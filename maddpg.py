@@ -7,15 +7,18 @@ from agent import Agent
 class MADDPG:
     # scenario='simple'实例化的时候传入的是UAV_Round_up
     def __init__(self, actor_dims, critic_dims, n_agents, n_actions, 
-                 scenario='simple',  alpha=0.01, beta=0.02, fc1=128, 
+                 scenario='simple',  alpha=0.01, beta=0.02, fc1=128,
                  fc2=128, gamma=0.99, tau=0.01, chkpt_dir='tmp/maddpg/'):
         self.agents = []
         self.n_agents = n_agents
         self.n_actions = n_actions
+        # 方案
         chkpt_dir += scenario
         # self.writer = SummaryWriter(log_dir=os.path.join(chkpt_dir, 'logs'))
 
+        # 实例化每一个agent的两个网络
         for agent_idx in range(self.n_agents):
+            # 第一个是每一个无人机的观测变量，后面是所有无人机共同的环境变量
             self.agents.append(Agent(actor_dims[agent_idx], critic_dims,  
                             n_actions, n_agents, agent_idx, alpha=alpha, beta=beta,
                             chkpt_dir=chkpt_dir))
@@ -23,6 +26,7 @@ class MADDPG:
     def save_checkpoint(self):
         print('... saving checkpoint ...')
         for agent in self.agents:
+            # 这一步其实是多余的，因为在网络中的最底层这一步是实现过的
             os.makedirs(os.path.dirname(agent.actor.chkpt_file), exist_ok=True)
             # os.makedirs(os.path.dirname(self.chkpt_file), exist_ok=True)
             agent.save_models()
@@ -43,10 +47,11 @@ class MADDPG:
         # 检查经验回放池中是否积累了足够的样本。
         if not memory.ready():
             return
+        # sars
         # actor_states：每个agent自己的状态
         # states：全局所有agent的状态拼接
         # actions：所有agent的动作
-        # rewards：每个agent的奖励
+        # rewards：所有每个agent的奖励
         # actor_new_states：每个agent下一个状态
         # states_：所有agent拼接的下一个状态
         # dones：每个样本是否终止
@@ -63,17 +68,19 @@ class MADDPG:
 
         all_agents_new_actions = []
         old_agents_actions = []
-    
+
+        # 更新critic网络
         for agent_idx, agent in enumerate(self.agents):
 
             new_states = T.tensor(actor_new_states[agent_idx], 
                                 dtype=T.float).to(device)
-
+            # 临时变量，代表的是每一个智能体在新环境下的新的动作
             new_pi = agent.target_actor.forward(new_states)
-
+            # 这里的actor就是每一个动作的概率,不是确定的动作
             all_agents_new_actions.append(new_pi)
             old_agents_actions.append(actions[agent_idx])
-
+        # 拼接 （[],[],[]）->([,,,,])
+        # 新环境下每一个装填的动作的概率
         new_actions = T.cat([acts for acts in all_agents_new_actions], dim=1)
         old_actions = T.cat([acts for acts in old_agents_actions],dim=1)
 
@@ -93,10 +100,16 @@ class MADDPG:
             agent.critic.optimizer.step()
             agent.critic.scheduler.step()
 
+
+            # 2.更新actor网络
+            # 旧的state
             mu_states = T.tensor(actor_states[agent_idx], dtype=T.float).to(device)
             oa = old_actions.clone()
-            oa[:,agent_idx*self.n_actions:agent_idx*self.n_actions+self.n_actions] = agent.actor.forward(mu_states)            
+            # 值其实是一样的,只不过原来的值不能反向传播梯度,这样做的目的就是将参数和这个值建立起来联系
+            oa[:,agent_idx*self.n_actions:agent_idx*self.n_actions+self.n_actions] = agent.actor.forward(mu_states)
+            # 损失函数--就是最大化Q值（最小化Q的负值）
             actor_loss = -T.mean(agent.critic.forward(states, oa).flatten())
+            # 清除上次梯度，避免累加
             agent.actor.optimizer.zero_grad()
             actor_loss.backward(retain_graph=True)
             agent.actor.optimizer.step()
@@ -111,6 +124,7 @@ class MADDPG:
             # for name, param in agent.critic.named_parameters():
             #     if param.grad is not None:
             #         self.writer.add_histogram(f'Agent_{agent_idx}/Critic_Gradients/{name}', param.grad, total_steps)
-            
+
+        # 更新参数(主网络和目标网络之间的参数)
         for agent in self.agents:    
             agent.update_network_parameters()

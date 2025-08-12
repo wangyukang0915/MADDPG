@@ -3,20 +3,21 @@ import numpy as np
 class MultiAgentReplayBuffer:
     def __init__(self, max_size, critic_dims, actor_dims, 
             n_actions, n_agents, batch_size):
-        self.mem_size = max_size
-        self.mem_cntr = 0
-        self.n_agents = n_agents
-        self.actor_dims = actor_dims
-        self.batch_size = batch_size
-        self.n_actions = n_actions
+        self.mem_size = max_size#最大容量
+        self.mem_cntr = 0#当前写入计数
+        self.n_agents = n_agents#无人机的数量
+        self.actor_dims = actor_dims#记录每个智能体局部观测的维度（状态向量长度）
+        self.batch_size = batch_size#每次从回放池中采样的样本数量（训练一个批次用多少条历史数据）
+        self.n_actions = n_actions#每个智能体的动作维度
 
-        self.state_memory = np.zeros((self.mem_size, critic_dims))
+        self.state_memory = np.zeros((self.mem_size, critic_dims))#全局状态的向量维度
         self.new_state_memory = np.zeros((self.mem_size, critic_dims))
         self.reward_memory = np.zeros((self.mem_size, n_agents))
-        self.terminal_memory = np.zeros((self.mem_size, n_agents), dtype=bool)
+        self.terminal_memory = np.zeros((self.mem_size, n_agents), dtype=bool)#存储每个智能体在该时间步的终止标志,True代表episode结束
 
         self.init_actor_memory()
 
+    # 为每个智能体分别开辟三块数组
     def init_actor_memory(self):
         self.actor_state_memory = []
         self.actor_new_state_memory = []
