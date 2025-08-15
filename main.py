@@ -10,7 +10,7 @@ import warnings
 from PIL import Image
 warnings.filterwarnings('ignore')
 
-def obs_list_to_state_vector(obs):
+def obs_list_to_state_vector(obs):#把一个“多维、分段”的观测值列表，转换成一个连续的一维状态向量。
     state = np.hstack([np.ravel(o) for o in obs])
     return state
 

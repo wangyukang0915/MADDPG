@@ -10,26 +10,30 @@ def update_lasers(pos, obs_pos, r, L, num_lasers, bound):
                 or pos[0] > bound \
                 or pos[1] < 0 \
                 or pos[1] > bound
-    
+    # 检测无人机是否在障碍物内部或者超出了边界
     if isInObs:
         return [0.0] * num_lasers, isInObs
     
-    angles = np.linspace(0, 2 * np.pi, num_lasers, endpoint=False)
-    laser_lengths = [L] * num_lasers
+    angles = np.linspace(0, 2 * np.pi, num_lasers, endpoint=False)#在 0 到 2π 弧度 之间等间隔生成 num_lasers 个角度（每个角度对应一束激光）。endpoint=False 表示不包含 2π（避免第一个和最后一个角度重合）。
+    laser_lengths = [L] * num_lasers#L是最大探测距离，不是边界
     
     for i, angle in enumerate(angles):
         intersection_dist = check_obs_intersection(pos, angle, obs_pos, r, L)
+        # 都是确保更新检测之后较小的值
         if laser_lengths[i] > intersection_dist:
             laser_lengths[i] = intersection_dist
     
     for i, angle in enumerate(angles):
         wall_dist = check_wall_intersection(pos, angle, bound, L)
+        # 都是确保更新检测之后较小的值
         if laser_lengths[i] > wall_dist:
             laser_lengths[i] = wall_dist
     
     return laser_lengths, isInObs
 
+# 检测与圆的交点（求无人机在某个角度与障碍物的距离）
 def check_obs_intersection(start_pos, angle, obs_pos,r,max_distance):
+    # 原理是直线与圆相交的判断
     ox = obs_pos[0]
     oy = obs_pos[1]
 
@@ -51,14 +55,14 @@ def check_obs_intersection(start_pos, angle, obs_pos,r,max_distance):
         discriminant = np.sqrt(discriminant)
         t1 = (-b - discriminant) / (2 * a)
         t2 = (-b + discriminant) / (2 * a)
-        
+        # t的范围是0-1，所以只有0-1之间的数才有效，而且，方程是用参数就行表示的，所以探测的长度*t就是探测最远的长度（检测到与障碍物之间的距离）
         if 0 <= t1 <= 1:
             return t1 * max_distance
         if 0 <= t2 <= 1:
             return t2 * max_distance
 
     return max_distance
-
+# 检测与边界的交点（求无人机在某个角度与边界的距离）
 def check_wall_intersection(start_pos, angle, bound, L):
 
     cos_theta = np.cos(angle)
@@ -81,7 +85,7 @@ def check_wall_intersection(start_pos, angle, bound, L):
         L_ = min(L_, abs(start_pos[0] / -cos_theta))
 
     return L_
-
+# 求三角形的面积
 def cal_triangle_S(p1, p2, p3):
     S = abs(0.5 * ((p2[0] - p1[0]) * (p3[1] - p1[1]) - (p3[0] - p1[0]) * (p2[1] - p1[1])))
     if math.isclose(S, 0.0, abs_tol=1e-9):

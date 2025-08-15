@@ -13,21 +13,21 @@ import copy
 
 class UAVEnv:
     def __init__(self,length=2,num_obstacle=3,num_agents=4):
-        self.length = length # length of boundary
+        self.length = length # length of boundary环境的尺寸
         self.num_obstacle = num_obstacle # number of obstacles
         self.num_agents = num_agents
-        self.time_step = 0.5 # update time step
-        self.v_max = 0.1
-        self.v_max_e = 0.12
-        self.a_max = 0.04
+        self.time_step = 0.5 # update time step 每0.5秒移动一次
+        self.v_max = 0.1#无人机的最大速度
+        self.v_max_e = 0.12#敌方无人机的最大速度
+        self.a_max = 0.04#加速度
         self.a_max_e = 0.05
-        self.L_sensor = 0.2
-        self.num_lasers = 16 # num of laserbeams
+        self.L_sensor = 0.2#传感器的探测半径
+        self.num_lasers = 16 # num of laserbeams---激光雷达（或距离传感器）的发射光束数量。
         self.multi_current_lasers = [[self.L_sensor for _ in range(self.num_lasers)] for _ in range(self.num_agents)]
         self.agents = ['agent_0','agent_1','agent_2','target']
-        self.info = np.random.get_state() # get seed
-        self.obstacles = [obstacle() for _ in range(self.num_obstacle)]
-        self.history_positions = [[] for _ in range(num_agents)]
+        self.info = np.random.get_state() # get seed保存当前随机数生成器的内部状态，便于之后用
+        self.obstacles = [obstacle() for _ in range(self.num_obstacle)]#生成三个障碍物类的实例并存入数组
+        self.history_positions = [[] for _ in range(num_agents)]#[(0.5, 1.2), (0.6, 1.3), (0.7, 1.4), (0.8, 1.5)],  # agent_0 的轨迹
 
         self.action_space = {
             'agent_0': spaces.Box(low=-np.inf, high=np.inf, shape=(2,)),
@@ -42,11 +42,11 @@ class UAVEnv:
             'target': spaces.Box(low=-np.inf, high=np.inf, shape=(23,))
         }
         
-
+    # 相当于一个初始化环境的函数
     def reset(self):
         SEED = random.randint(1,1000)
         random.seed(SEED)
-        self.multi_current_pos = []
+        self.multi_current_pos = []#每个智能体的当前的位置和速度
         self.multi_current_vel = []
         self.history_positions = [[] for _ in range(self.num_agents)]
         for i in range(self.num_agents):
@@ -54,29 +54,33 @@ class UAVEnv:
                 self.multi_current_pos.append(np.random.uniform(low=0.1,high=0.4,size=(2,)))
             else: # for target
                 # self.multi_current_pos.append(np.array([1.0,0.25]))
+                # 目标无人机的初始位置是固定的
                 self.multi_current_pos.append(np.array([0.5,1.75]))
             self.multi_current_vel.append(np.zeros(2)) # initial velocity = [0,0]
 
-        # update lasers
+        # update lasers--只是更新探测射线的参数，不检测是否碰撞，因为没有接收返回值
         self.update_lasers_isCollied_wrapper()
         ## multi_obs is list of agent_obs, state is multi_obs after flattenned
         multi_obs = self.get_multi_obs()
         return multi_obs
 
+    # 一个时间步的状态变换更行
     def step(self,actions):
-        last_d2target = []
+        last_d2target = []#每个无人机到目标的距离
         # print(actions)
         # time.sleep(0.1)
         for i in range(self.num_agents):
 
             pos = self.multi_current_pos[i]
             if i != self.num_agents - 1:
-                pos_taget = self.multi_current_pos[-1]
+                pos_taget = self.multi_current_pos[-1]#这里的-1表示列表的最后一个
                 last_d2target.append(np.linalg.norm(pos-pos_taget))
-            
+            # 更新速度
             self.multi_current_vel[i][0] += actions[i][0] * self.time_step
             self.multi_current_vel[i][1] += actions[i][1] * self.time_step
+            # 计算沿着飞行方向的速度
             vel_magnitude = np.linalg.norm(self.multi_current_vel)
+            # 速度过大的情况下，调整速度的大小
             if i != self.num_agents - 1:
                 if vel_magnitude >= self.v_max:
                     self.multi_current_vel[i] = self.multi_current_vel[i] / vel_magnitude * self.v_max
@@ -87,11 +91,11 @@ class UAVEnv:
             self.multi_current_pos[i][0] += self.multi_current_vel[i][0] * self.time_step
             self.multi_current_pos[i][1] += self.multi_current_vel[i][1] * self.time_step
 
-        # Update obstacle positions
+        # Update obstacle positions障碍物移动--如果碰到边界，那么就反方向反弹
         for obs in self.obstacles:
             obs.position += obs.velocity * self.time_step
             # Check for boundary collisions and adjust velocities
-            for dim in [0, 1]:
+            for dim in [0, 1]:#0 x   1 y
                 if obs.position[dim] - obs.radius < 0:
                     obs.position[dim] = obs.radius
                     obs.velocity[dim] *= -1
@@ -106,6 +110,7 @@ class UAVEnv:
 
         return multi_next_obs, rewards, dones
 
+    # 只是单纯一个函数，没有地方用到，没有用到
     def test_multi_obs(self):
         total_obs = []
         for i in range(self.num_agents):
@@ -119,30 +124,34 @@ class UAVEnv:
             ]
             total_obs.append(S_uavi)
         return total_obs
-    
+
+    # # 获取观测状态的值
     def get_multi_obs(self):
+
         total_obs = []
         single_obs = []
-        S_evade_d = [] # dim 3 only for target
+        S_evade_d = [] # dim 3 only for target只给target用
         for i in range(self.num_agents):
+            #TODO 优化，这一步当i为target的时候是空跑，里面的数据是用不到的，可以进行处理
             pos = self.multi_current_pos[i]
             vel = self.multi_current_vel[i]
+            # 归一化处理
             S_uavi = [
                 pos[0]/self.length,
                 pos[1]/self.length,
                 vel[0]/self.v_max,
                 vel[1]/self.v_max
             ] # dim 4
-            S_team = [] # dim 4 for 3 agents 1 target
-            S_target = [] # dim 2
+            S_team = [] # dim 4 for 3 agents 1 target队友位置
+            S_target = [] # dim 2与目标的信息
             for j in range(self.num_agents):
                 if j != i and j != self.num_agents - 1: 
                     pos_other = self.multi_current_pos[j]
                     S_team.extend([pos_other[0]/self.length,pos_other[1]/self.length])
                 elif j == self.num_agents - 1:
                     pos_target = self.multi_current_pos[j]
-                    d = np.linalg.norm(pos - pos_target)
-                    theta = np.arctan2(pos_target[1]-pos[1], pos_target[0]-pos[0])
+                    d = np.linalg.norm(pos - pos_target)#无人机与目标的距离
+                    theta = np.arctan2(pos_target[1]-pos[1], pos_target[0]-pos[0])#无人机与目标的角度
                     S_target.extend([d/np.linalg.norm(2*self.length), theta])
                     if i != self.num_agents - 1:
                         S_evade_d.append(d/np.linalg.norm(2*self.length))
@@ -158,30 +167,37 @@ class UAVEnv:
             
         return total_obs
 
+    # 根据当前的状态获取奖励--根据：
+    # 碰撞信息 IsCollied
+    # 上一步到目标的距离 last_d--用到上一步到目标的距离的原因是为了求当前的距离和上一步的距离的差,计算的是deta变化量
     def cal_rewards_dones(self,IsCollied,last_d):
         dones = [False] * self.num_agents
         rewards = np.zeros(self.num_agents)
+        # 奖励权重
         mu1 = 0.7 # r_near
         mu2 = 0.4 # r_safe
         mu3 = 0.01 # r_multi_stage
         mu4 = 5 # r_finish
-        d_capture = 0.3
-        d_limit = 0.75
-        ## 1 reward for single rounding-up-UAVs:
+        d_capture = 0.3#认为“抓住目标”的距离阈值
+        d_limit = 0.75#围捕阶段的距离限制--这样可以让奖励函数分阶段引导：先追上目标，再逐步缩小包围圈。---在多阶段奖励中用于条件判断：
+
+        ## 1 reward for single rounding-up-UAVs:--奖励速度快且朝向目标的 UAV，惩罚速度快但背离目标的 UAV。---独立阶段,下面是合作阶段
         for i in range(3):
             pos = self.multi_current_pos[i]
             vel = self.multi_current_vel[i]
             pos_target = self.multi_current_pos[-1]
+            # 在运动方向的速度
             v_i = np.linalg.norm(vel)
+            # 与目标之间的距离
             dire_vec = pos_target - pos
             d = np.linalg.norm(dire_vec) # distance to target
 
-            cos_v_d = np.dot(vel,dire_vec)/(v_i*d + 1e-3)
+            cos_v_d = np.dot(vel,dire_vec)/(v_i*d + 1e-3)#速度向量与目标方向向量的点积
             r_near = abs(2*v_i/self.v_max)*cos_v_d
             # r_near = min(abs(v_i/self.v_max)*1.0/(d + 1e-5),10)/5
             rewards[i] += mu1 * r_near # TODO: if not get nearer then receive negative reward
         
-        ## 2 collision reward for all UAVs:
+        ## 2 collision reward for all UAVs:--碰撞惩罚
         for i in range(self.num_agents):
             if IsCollied[i]:
                 r_safe = -10
@@ -195,28 +211,32 @@ class UAVEnv:
         p1 = self.multi_current_pos[1]
         p2 = self.multi_current_pos[2]
         pe = self.multi_current_pos[-1]
+        # 无人机目标之间围成的面积
         S1 = cal_triangle_S(p0,p1,pe)
         S2 = cal_triangle_S(p1,p2,pe)
         S3 = cal_triangle_S(p2,p0,pe)
         S4 = cal_triangle_S(p0,p1,p2)
+        # 无人机和目标之间的距离
         d1 = np.linalg.norm(p0-pe)
         d2 = np.linalg.norm(p1-pe)
         d3 = np.linalg.norm(p2-pe)
+        # 总和
         Sum_S = S1 + S2 + S3
         Sum_d = d1 + d2 + d3
         Sum_last_d = sum(last_d)
-        # 3.1 reward for target UAV:
+        # 3.1 reward for target UAV:--成功逃脱给正奖励,距离变小,被捕捉,给负奖励
         rewards[-1] += np.clip(10 * (Sum_d - Sum_last_d),-2,2)
         # print(rewards[-1])
-        # 3.2 stage-1 track
+        #       对于任务无人机的奖励
+        # 3.2 stage-1 track--追踪
         if Sum_S > S4 and Sum_d >= d_limit and all(d >= d_capture for d in [d1, d2, d3]):
             r_track = - Sum_d/max([d1,d2,d3])
             rewards[0:2] += mu3*r_track
-        # 3.3 stage-2 encircle
+        # 3.3 stage-2 encircle---包围
         elif Sum_S > S4 and (Sum_d < d_limit or any(d >= d_capture for d in [d1, d2, d3])):
             r_encircle = -1/3*np.log(Sum_S - S4 + 1)
             rewards[0:2] += mu3*r_encircle
-        # 3.4 stage-3 capture
+        # 3.4 stage-3 capture---抓捕
         elif Sum_S == S4 and any(d > d_capture for d in [d1,d2,d3]):
             r_capture = np.exp((Sum_last_d - Sum_d)/(3*self.v_max))
             rewards[0:2] += mu3*r_capture
@@ -228,16 +248,17 @@ class UAVEnv:
 
         return rewards,dones
 
+    # 激光雷达测距 + 碰撞检测（与障碍物的碰撞和与边界的碰撞，边界检测）
     def update_lasers_isCollied_wrapper(self):
-        self.multi_current_lasers = []
-        dones = []
+        self.multi_current_lasers = []#用来存储所有智能体的 雷达扫描结果。
+        dones = []#用来存储每个智能体是否发生碰撞
         for i in range(self.num_agents):
             pos = self.multi_current_pos[i]
-            current_lasers = [self.L_sensor] * self.num_lasers
-            done_obs = []
+            current_lasers = [self.L_sensor] * self.num_lasers#所有方向的探测距离
+            done_obs = []#暂存每个障碍物的碰撞布尔值
             for obs in self.obstacles:
                 obs_pos = obs.position
-                r = obs.radius
+                r = obs.radius#障碍物的半径
                 _current_lasers, done = update_lasers(pos,obs_pos,r,self.L_sensor,self.num_lasers,self.length)
                 current_lasers = [min(l, cl) for l, cl in zip(_current_lasers, current_lasers)]
                 done_obs.append(done)
@@ -248,9 +269,10 @@ class UAVEnv:
             dones.append(done)
         return dones
 
+    # 绘画--画布--他和下面的一个是生成动态的视频---一个是生成训练时候的单步动作
     def render(self):
-
-        plt.clf()
+        # plt.rcParams["figure.figsize"]  # 默认值 (6.4, 4.8) 英寸---函数的默认尺寸
+        plt.clf()#清空当前 Matplotlib 图形窗口，避免上一步的轨迹残留在下一帧中。
         
         # load UAV icon
         uav_icon = mpimg.imread('UAV.png')
@@ -258,22 +280,25 @@ class UAVEnv:
 
         # plot round-up-UAVs
         for i in range(self.num_agents - 1):
-            pos = copy.deepcopy(self.multi_current_pos[i])
+            pos = copy.deepcopy(self.multi_current_pos[i])#安全地获取当前 UAV 位置的副本
             vel = self.multi_current_vel[i]
             self.history_positions[i].append(pos)
             trajectory = np.array(self.history_positions[i])
             # plot trajectory
-            plt.plot(trajectory[:, 0], trajectory[:, 1], 'b-', alpha=0.3)
+            plt.plot(trajectory[:, 0], trajectory[:, 1], 'b-', alpha=0.3)#历史轨迹xy坐标,轨迹的颜色和透明度
             # Calculate the angle of the velocity vector
-            angle = np.arctan2(vel[1], vel[0])
-
+            angle = np.arctan2(vel[1], vel[0])#确定 UAV 当前的飞行方向，用于后续旋转 UAV 图标，让图标朝着飞行方向显示。
+            # plt.gca()作用是获取坐标轴
             # plt.scatter(pos[0], pos[1], c='b', label='hunter')
+            #创建二维仿射变换--转换无人机的图标---平移+旋转(缩放没有用到),只是规定了规则
             t = transforms.Affine2D().rotate(angle).translate(pos[0], pos[1])
             # plt.imshow(uav_icon, extent=(pos[0] - 0.05, pos[0] + 0.05, pos[1] - 0.05, pos[1] + 0.05))
             # plt.imshow(uav_icon, transform=t + plt.gca().transData, extent=(pos[0] - 0.05, pos[0] + 0.05, pos[1] - 0.05, pos[1] + 0.05))
-            icon_size = 0.1  # Adjust this size to your icon's aspect ratio
+            icon_size = 0.1  # Adjust this size to your icon's aspect ratio--图片的尺寸
+            #  plt.gca().transData是动态变换对象
             plt.imshow(uav_icon, transform=t + plt.gca().transData, extent=(-icon_size/2, icon_size/2, -icon_size/2, icon_size/2))
-
+            # 图像数组
+            #
             # # Visualize laser rays for each UAV(can be closed when unneeded)
             # lasers = self.multi_current_lasers[i]
             # angles = np.linspace(0, 2 * np.pi, len(lasers), endpoint=False)
@@ -283,20 +308,27 @@ class UAVEnv:
             #     plt.plot([pos[0], laser_end[0]], [pos[1], laser_end[1]], 'b-', alpha=0.2)
 
         # plot target
+        # 因为target是没有图片进行表示的,所以就用自己画出的图像进行表示,这里是用一个红色的圆点进行表示
         plt.scatter(self.multi_current_pos[-1][0], self.multi_current_pos[-1][1], c='r', label='Target')
         self.history_positions[-1].append(copy.deepcopy(self.multi_current_pos[-1]))
         trajectory = np.array(self.history_positions[-1])
         plt.plot(trajectory[:, 0], trajectory[:, 1], 'r-', alpha=0.3)
 
+
+        # 画出障碍物
         for obstacle in self.obstacles:
+            # 圆形
             circle = plt.Circle(obstacle.position, obstacle.radius, color='gray', alpha=0.5)
+            #把一个图形对象（patch）添加到坐标轴里。
             plt.gca().add_patch(circle)
         plt.xlim(-0.1, self.length+0.1)
         plt.ylim(-0.1, self.length+0.1)
         plt.draw()
-        plt.legend()
+        plt.legend()#在图像中显示图例
+        # plt.legend(['UAV 1', 'UAV 2'])
         # plt.pause(0.01)
         # Save the current figure to a buffer
+        # 获取图片对象--存入内存缓冲区---转换成rgba数组---转换成Numpy格式---返回
         canvas = agg.FigureCanvasAgg(plt.gcf())
         canvas.draw()
         buf = canvas.buffer_rgba()
@@ -319,7 +351,7 @@ class UAVEnv:
             trajectory = np.array(self.history_positions[i])
             for j in range(len(trajectory) - 1):
                 color = cm.viridis(j / len(trajectory))  # 使用 viridis colormap
-                plt.plot(trajectory[j:j+2, 0], trajectory[j:j+2, 1], color=color, alpha=0.7)
+                plt.plot(trajectory[j:j+2, 0], trajectory[j:j+2, 1], color=color, alpha=0.7)#两个点之间的一个线段
             # plt.plot(trajectory[:, 0], trajectory[:, 1], 'b-', alpha=1)
 
             t = transforms.Affine2D().rotate(angle).translate(pos[0], pos[1])
@@ -343,11 +375,13 @@ class UAVEnv:
     def close(self):
         plt.close()
 
+
+# 定义一个障碍物的类
 class obstacle():
     def __init__(self, length=2):
         self.position = np.random.uniform(low=0.45, high=length-0.55, size=(2,))
-        angle = np.random.uniform(0, 2 * np.pi)
-        # speed = 0.03 
+        angle = np.random.uniform(0, 2 * np.pi)#如果障碍物是运动的，那么生成一个障碍物的运动方向
+        # speed = 0.03
         speed = 0.00 # to make obstacle fixed
-        self.velocity = np.array([speed * np.cos(angle), speed * np.sin(angle)])
-        self.radius = np.random.uniform(0.1, 0.15)
+        self.velocity = np.array([speed * np.cos(angle), speed * np.sin(angle)])#把速度大小和方向（angle）转成二维平面上的速度向量。
+        self.radius = np.random.uniform(0.1, 0.15)#随机生成障碍物的半径
