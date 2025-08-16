@@ -26,13 +26,14 @@ if __name__ == '__main__':
     env = UAVEnv()
     # print(env.info)
     n_agents = env.num_agents
-    actor_dims = []
+    actor_dims = []#actor网络的输入维度--观测空间的维度
     for agent_id in env.observation_space.keys():
         actor_dims.append(env.observation_space[agent_id].shape[0])
     critic_dims = sum(actor_dims)
 
     # action space is a list of arrays, assume each agent has same action space
     n_actions = 2
+
     maddpg_agents = MADDPG(actor_dims, critic_dims, n_agents, n_actions, 
                            fc1=128, fc2=128,
                            alpha=0.0001, beta=0.003, scenario='UAV_Round_up',
@@ -41,22 +42,22 @@ if __name__ == '__main__':
     memory = MultiAgentReplayBuffer(1000000, critic_dims, actor_dims, 
                         n_actions, n_agents, batch_size=256)
 
-    PRINT_INTERVAL = 100
-    N_GAMES = 100
-    MAX_STEPS = 100
+    PRINT_INTERVAL = 100#控制训练或评估过程打印平均分的频率。
+    N_GAMES = 100#训练或者评估的总回合数
+    MAX_STEPS = 100#限制每个 episode 最多可以执行多少个环境步
     total_steps = 0
     score_history = []
     target_score_history = []
-    evaluate = True
-    # evaluate = False
+    # evaluate = True
+    evaluate = False
     best_score = -30
 
     if evaluate:
         maddpg_agents.load_checkpoint()
-        print('----  evaluating  ----')
+        print('----  evaluating  ----')#评估模式
     else:
-        print('----training start----')
-    
+        print('----training start----')#训练模式
+    #训练和评估都是100次
     for i in range(N_GAMES):
         obs = env.reset()
         score = 0
@@ -68,12 +69,16 @@ if __name__ == '__main__':
                 # env.render()
                 env_render = env.render()
                 if episode_step % 10 == 0:
+                    # print("aaaa",i)
                     # Save the image every 10 episode steps
                     filename = f'images/episode_{i}_step_{episode_step}.png'
                     os.makedirs(os.path.dirname(filename), exist_ok=True)  # Create directory if it doesn't exist
                     save_image(env_render, filename)
                 # time.sleep(0.01)
+
+            # 获取下一步的动作
             actions = maddpg_agents.choose_action(obs,total_steps,evaluate)
+            # 执行返回动作---下一步的动作--奖励---是否结束
             obs_, rewards, dones = env.step(actions)
 
             state = obs_list_to_state_vector(obs)
@@ -84,6 +89,7 @@ if __name__ == '__main__':
 
             memory.store_transition(obs, state, actions, rewards, obs_, state_, dones)
 
+            # 十步学习一次--只要有十次经验就学习一次
             if total_steps % 10 == 0 and not evaluate:
                 maddpg_agents.learn(memory,total_steps)
 
@@ -93,9 +99,10 @@ if __name__ == '__main__':
             total_steps += 1
             episode_step += 1
 
+        # print("test")
         score_history.append(score)
         target_score_history.append(score_target)
-        avg_score = np.mean(score_history[-100:])
+        avg_score = np.mean(score_history[-100:])#score_history 列表的最后一个元素 往前，取出最近 100 条数据（包括最后一条）。
         avg_target_score = np.mean(target_score_history[-100:])
         if not evaluate:
             if i % PRINT_INTERVAL == 0 and i > 0 and avg_score > best_score:

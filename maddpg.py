@@ -69,7 +69,7 @@ class MADDPG:
         all_agents_new_actions = []
         old_agents_actions = []
 
-        # 更新critic网络
+
         for agent_idx, agent in enumerate(self.agents):
 
             new_states = T.tensor(actor_new_states[agent_idx], 
@@ -84,6 +84,7 @@ class MADDPG:
         new_actions = T.cat([acts for acts in all_agents_new_actions], dim=1)
         old_actions = T.cat([acts for acts in old_agents_actions],dim=1)
 
+        # 更新critic网络
         for agent_idx, agent in enumerate(self.agents):
             with T.no_grad():
                 critic_value_ = agent.target_critic.forward(states_, new_actions).flatten()

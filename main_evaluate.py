@@ -93,6 +93,7 @@ if __name__ == '__main__':
     n_agents = env.num_agents
     n_actions = 2
     actor_dims = []
+    # 速度集合和分速度的集合
     velocities_magnitude = [[] for _ in range(env.num_agents)]  # record magnitude of vel
     velocities_x = [[] for _ in range(env.num_agents)]  # record vel_x
     velocities_y = [[] for _ in range(env.num_agents)]  # record vel_y
@@ -109,6 +110,7 @@ if __name__ == '__main__':
 
     obs = env.reset()
 
+    # 动作循环的核心函数---每一帧都会被调用一次
     def update(frame):
         global obs,velocities_magnitude,velocities_x,velocities_y
 
